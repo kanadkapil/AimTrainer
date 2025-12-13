@@ -4,6 +4,7 @@ import random
 import time
 from src.core.settings import *
 from src.gameplay.player import FPSPlayer
+from src.gameplay.health_player import HealthPlayer
 from src.gameplay.environment import Arena
 from src.gameplay.targets_3d import Target3D, MovingTarget3D
 
@@ -12,13 +13,17 @@ class GameManager(Entity):
     def __init__(self):
         super().__init__()
         self.state = "MENU"  # MENU, PLAYING, GAMEOVER
+        self.game_mode = None  # "practice" or "survival"
         self.score = 0
         self.last_spawn = 0
         self.spawn_rate = 1.0
 
         # UI
         self.menu_text = Text(
-            text="Press 'P' to Play", origin=(0, 0), scale=2, color=color.white
+            text="Choose Mode:\n1 - Practice Mode\n2 - Survival Mode",
+            origin=(0, 0),
+            scale=1.5,
+            color=color.white,
         )
         self.score_text = Text(
             text="", position=(-0.85, 0.45), scale=1.5, enabled=False
@@ -36,9 +41,11 @@ class GameManager(Entity):
         if self.player:
             self.player.enabled = True
             self.player.position = (0, 2, -15)
-            # Reset lives if possible
-            if hasattr(self.player, "lives"):
-                self.player.lives = 3
+            # Reset health for survival mode
+            if hasattr(self.player, "health"):
+                if self.game_mode == "survival":
+                    self.player.health = 100
+                    self.player.max_health = 100
 
         self.score = 0
         self.score_text.enabled = True
@@ -63,11 +70,13 @@ class GameManager(Entity):
                 self.spawn_target()
                 self.last_spawn = time.time()
 
-            self.score_text.text = f"Score: {self.score}"
+            mode_name = "Practice" if self.game_mode == "practice" else "Survival"
+            self.score_text.text = f"Mode: {mode_name} | Score: {self.score}"
 
-            # Game Over Logic - lives check (assuming player doesn't decrement lives yet, but sticking to placeholder)
-            # Realistically we need a way to track lives. For now, let's just rely on manual game over or add lives logic here.
-            pass
+            # Game Over check for Survival mode
+            if self.game_mode == "survival" and hasattr(self.player, "health"):
+                if self.player.health <= 0:
+                    self.game_over()
 
     def spawn_target(self):
         x = random.uniform(-20, 20)
@@ -118,11 +127,21 @@ class GameManager(Entity):
         if key == "escape":
             mouse.locked = False
             application.quit()
-        if key == "p" and self.state == "MENU":
-            self.start_game()
+
+        # Mode selection
+        if self.state == "MENU":
+            if key == "1":
+                self.game_mode = "practice"
+                self.start_game()
+            elif key == "2":
+                self.game_mode = "survival"
+                self.start_game()
+
+        # Restart
         if key == "r" and self.state == "GAMEOVER":
-            self.menu_text.text = "Press 'P' to Play"
+            self.menu_text.text = "Choose Mode:\n1 - Practice Mode\n2 - Survival Mode"
             self.state = "MENU"
+            self.game_mode = None
 
 
 class AimTrainer3D:
@@ -141,8 +160,9 @@ class AimTrainer3D:
         # Environment
         self.gm.arena = Arena()
 
-        # Player
-        self.gm.player = FirstPersonController(position=(0, 2, -15))
+        # Player - use different controller based on mode
+        # For now, always use HealthPlayer (works for both modes)
+        self.gm.player = HealthPlayer(position=(0, 2, -15))
         self.gm.player.enabled = False
 
     def run(self):

@@ -61,7 +61,7 @@ class GameMode:
 
         for target in self.targets:
             if target.check_collision(pos[0], pos[1]):
-                target.active = False  # Remove target
+                self.targets.remove(target)  # Remove target immediately
                 self.score += 1
                 hit = True
 

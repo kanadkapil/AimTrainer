@@ -73,7 +73,12 @@ class GameManager(Entity):
         x = random.uniform(-20, 20)
         y = random.uniform(1, 8)
         z = random.uniform(0, 20)
-        t = Target3D(position=(x, y, z))
+
+        if random.random() < 0.5:  # 50% chance of moving target
+            t = MovingTarget3D(position=(x, y, z), speed=random.uniform(2, 5))
+        else:
+            t = Target3D(position=(x, y, z))
+
         t.manager = self
 
     def on_target_hit(self, target):
@@ -87,6 +92,9 @@ class GameManager(Entity):
                 lambda: self.gun.animate_position((0.5, -0.5), duration=0.1), delay=0.1
             )
             invoke(setattr, self.gun, "on_cooldown", False, delay=0.2)
+
+            # Sound (placeholder for now)
+            # Audio('assets/shot.wav').play()
 
             hit_info = raycast(camera.world_position, camera.forward, distance=100)
             if hit_info.hit:

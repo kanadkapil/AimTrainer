@@ -45,7 +45,8 @@ class MovingTarget3D(Target3D):
         ).normalized()
 
     def update(self):
-        super().update()
+        # Update position BEFORE checking lifetime/expiration
+        # This prevents accessing position after entity is destroyed
         self.position += self.direction * self.speed * time.dt
 
         # Quick bounds check/bounce
@@ -53,3 +54,6 @@ class MovingTarget3D(Target3D):
             self.direction.x *= -1
         if abs(self.y) > 10 or self.y < 1:
             self.direction.y *= -1
+
+        # Now call parent update which may destroy entity if expired
+        super().update()

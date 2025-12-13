@@ -93,14 +93,15 @@ class GameManager(Entity):
             )
             invoke(setattr, self.gun, "on_cooldown", False, delay=0.2)
 
-            # Sound (placeholder for now)
-            # Audio('assets/shot.wav').play()
+            # Spawn visible bullet
+            from src.gameplay.bullet import Bullet
 
-            hit_info = raycast(camera.world_position, camera.forward, distance=100)
-            if hit_info.hit:
-                if hasattr(hit_info.entity, "manager"):
-                    hit_info.entity.manager.on_target_hit(hit_info.entity)
-                    destroy(hit_info.entity)
+            bullet = Bullet(
+                position=camera.world_position + camera.forward * 0.5,
+                direction=camera.forward,
+                speed=50,
+                owner=self.player,
+            )
 
     def game_over(self):
         self.state = "GAMEOVER"

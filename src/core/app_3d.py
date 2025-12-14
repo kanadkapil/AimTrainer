@@ -8,6 +8,8 @@ from src.gameplay.health_player import HealthPlayer
 from src.gameplay.enemy import Enemy
 from src.gameplay.environment import Arena
 from src.gameplay.targets_3d import Target3D, MovingTarget3D
+from src.gameplay.bullet import Bullet
+from src.gameplay.weapons import WEAPONS, PISTOL, AR_RIFLE, SHOTGUN
 
 
 class GameManager(Entity):
@@ -22,6 +24,11 @@ class GameManager(Entity):
         self.enemy_spawn_interval = 5.0  # Spawn enemy every 5 seconds (Survival only)
         self.last_enemy_spawn = 0
 
+        # Weapon System
+        self.current_weapon = PISTOL  # Start with pistol
+        self.last_shot_time = 0
+        self.mouse_held = False  # For auto-fire
+
         # UI
         self.menu_text = Text(
             text="Choose Mode:\n1 - Practice Mode\n2 - Survival Mode",
@@ -32,15 +39,27 @@ class GameManager(Entity):
         self.score_text = Text(
             text="", position=(-0.85, 0.45), scale=1.5, enabled=False
         )
+        self.weapon_text = Text(
+            text="", position=(-0.85, 0.4), scale=1, enabled=False, color=color.yellow
+        )
 
         # References
         self.player = None
         self.arena = None
         self.gun = None
 
-    def start_game(self):
+    def start_game(self, mode):
         self.state = "PLAYING"
+        self.game_mode = mode
+        self.score = 0
+        self.last_spawn = time.time()
+        self.last_enemy_spawn = time.time()
+        self.current_weapon = PISTOL  # Reset to pistol
+
+        mouse.locked = True
         self.menu_text.enabled = False
+        self.score_text.enabled = True
+        self.weapon_text.enabled = True  # Show weapon UI
 
         if self.player:
             self.player.enabled = True
@@ -50,10 +69,6 @@ class GameManager(Entity):
                 if self.game_mode == "survival":
                     self.player.health = 100
                     self.player.max_health = 100
-
-        self.score = 0
-        self.score_text.enabled = True
-        mouse.locked = True
 
         # Initialize gun if needed
         if not self.gun:
@@ -69,6 +84,11 @@ class GameManager(Entity):
 
     def update(self):
         if self.state == "PLAYING":
+            # Auto-fire for auto weapons
+            if self.mouse_held and self.current_weapon.auto:
+                if time.time() - self.last_shot_time >= self.current_weapon.cooldown:
+                    self.shoot()
+
             # Spawning Logic
             if time.time() - self.last_spawn > self.spawn_rate:
                 self.spawn_target()
@@ -82,6 +102,7 @@ class GameManager(Entity):
 
             mode_name = "Practice" if self.game_mode == "practice" else "Survival"
             self.score_text.text = f"Mode: {mode_name} | Score: {self.score}"
+            self.weapon_text.text = f"Weapon: {self.current_weapon.name} [1/2/3]"
 
             # Game Over check for Survival mode
             if self.game_mode == "survival" and hasattr(self.player, "health"):
@@ -120,24 +141,80 @@ class GameManager(Entity):
             self.enemies.remove(enemy)
         self.score += 5  # Bonus points for killing enemies
 
-    def shoot(self):
-        if self.gun and not self.gun.on_cooldown:
-            self.gun.on_cooldown = True
-            self.gun.animate_position((0.5, -0.4), duration=0.1, curve=curve.linear)
-            invoke(
-                lambda: self.gun.animate_position((0.5, -0.5), duration=0.1), delay=0.1
-            )
-            invoke(setattr, self.gun, "on_cooldown", False, delay=0.2)
+    def switch_weapon(self, weapon_index):
+        """Switch to a different weapon."""
+        self.current_weapon = WEAPONS[weapon_index]
+        self.last_shot_time = 0  # Reset cooldown
+        print(f"Switched to {self.current_weapon.name}")
 
-            # Spawn visible bullet
-            from src.gameplay.bullet import Bullet
+    def shoot(self):
+        """Fire the current weapon."""
+        current_time = time.time()
+
+        # Check cooldown
+        if current_time - self.last_shot_time < self.current_weapon.cooldown:
+            return
+
+        self.last_shot_time = current_time
+
+        # Gun recoil animation
+        if self.gun:
+            self.gun.on_cooldown = True
+            self.gun.position = (
+                camera.position + camera.forward * 1.5 + camera.down * 0.3
+            )
+            self.gun.animate_position(
+                camera.position + camera.forward * 2 + camera.down * 0.5,
+                duration=0.05,
+                curve=curve.out_bounce,
+            )
+            invoke(
+                setattr,
+                self.gun,
+                "on_cooldown",
+                False,
+                delay=self.current_weapon.cooldown,
+            )
+
+            # Return gun to idle position
+            invoke(
+                self.gun.animate_position,
+                camera.position + camera.forward * 2 + camera.down * 0.5,
+                delay=self.current_weapon.cooldown * 0.5,
+            )
+
+        # Spawn bullets based on weapon
+        for i in range(self.current_weapon.pellets):
+            # Calculate spread
+            spread_x = random.uniform(
+                -self.current_weapon.spread, self.current_weapon.spread
+            )
+            spread_y = random.uniform(
+                -self.current_weapon.spread, self.current_weapon.spread
+            )
+
+            # Direction with spread
+            base_direction = camera.forward
+            spread_direction = (
+                base_direction
+                + camera.right * spread_x * 0.01
+                + camera.up * spread_y * 0.01
+            )
+            spread_direction = spread_direction.normalized()
+
+            # Spawn from gun tip if gun exists, otherwise from camera
+            if self.gun:
+                spawn_pos = camera.world_position + camera.forward * 2 + camera.up * 0.5
+            else:
+                spawn_pos = camera.world_position + camera.forward * 1
 
             bullet = Bullet(
-                position=camera.world_position + camera.forward * 0.5,
-                direction=camera.forward,
-                speed=50,
+                position=spawn_pos,
+                direction=spread_direction,
+                speed=self.current_weapon.bullet_speed,
                 owner=self.player,
             )
+            bullet.damage = self.current_weapon.damage  # Set bullet damage
 
     def game_over(self):
         self.state = "GAMEOVER"
@@ -146,29 +223,45 @@ class GameManager(Entity):
         mouse.locked = False
         self.menu_text.text = f"GAME OVER\nScore: {self.score}\nPress 'R' to Restart"
         self.menu_text.enabled = True
+        self.weapon_text.enabled = False
 
     def input(self, key):
-        if key == "left mouse down" and self.state == "PLAYING":
-            self.shoot()
-
         if key == "escape":
             mouse.locked = False
             application.quit()
 
-        # Mode selection
+        # Menu state
         if self.state == "MENU":
             if key == "1":
-                self.game_mode = "practice"
-                self.start_game()
+                self.start_game("practice")
             elif key == "2":
-                self.game_mode = "survival"
-                self.start_game()
+                self.start_game("survival")
 
-        # Restart
-        if key == "r" and self.state == "GAMEOVER":
-            self.menu_text.text = "Choose Mode:\n1 - Practice Mode\n2 - Survival Mode"
-            self.state = "MENU"
-            self.game_mode = None
+        # Playing state
+        elif self.state == "PLAYING":
+            # Weapon switching
+            if key == "1":
+                self.switch_weapon(0)  # Pistol
+            elif key == "2":
+                self.switch_weapon(1)  # AR Rifle
+            elif key == "3":
+                self.switch_weapon(2)  # Shotgun
+
+            # Shooting
+            if key == "left mouse down":
+                self.mouse_held = True
+                self.shoot()
+            elif key == "left mouse up":
+                self.mouse_held = False
+
+        # Game over state
+        elif self.state == "GAMEOVER":
+            if key == "r":
+                self.menu_text.text = (
+                    "Choose Mode:\n1 - Practice Mode\n2 - Survival Mode"
+                )
+                self.state = "MENU"
+                self.game_mode = None
 
 
 class AimTrainer3D:

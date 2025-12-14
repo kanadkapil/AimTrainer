@@ -68,12 +68,14 @@ class Bullet(Entity):
 
         # Check if hit a player (for enemy bullets)
         if hasattr(hit_entity, "take_damage") and hit_entity != self.owner:
-            hit_entity.take_damage(10)
+            damage = getattr(self, "damage", 10)  # Use bullet damage or default 10
+            hit_entity.take_damage(damage)
 
         # Check if hit an enemy (for player bullets)
         if hasattr(hit_entity, "health") and hasattr(hit_entity, "game_manager"):
             if self.owner != hit_entity:  # Don't hit self
-                hit_entity.take_damage(25)
+                damage = getattr(self, "damage", 25)  # Use bullet damage or default 25
+                hit_entity.take_damage(damage)
 
         # Visual effect on hit (optional)
         # You can add particle effects here

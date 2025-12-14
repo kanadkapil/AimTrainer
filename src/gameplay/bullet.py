@@ -31,8 +31,24 @@ class Bullet(Entity):
         )
 
     def update(self):
+        # Calculate move distance for this frame
+        move_dist = self.speed * time.dt
+
+        # Raycast AHEAD of movement to check collision
+        hit_info = raycast(
+            self.position,
+            self.direction,
+            distance=move_dist,
+            ignore=[self, self.owner],
+        )
+
+        if hit_info.hit:
+            self.on_collision(hit_info.entity)
+            destroy(self)
+            return
+
         # Move bullet
-        self.position += self.direction * self.speed * time.dt
+        self.position += self.direction * move_dist
 
         # Check lifetime
         if time.time() - self.spawn_time > self.max_lifetime:
@@ -44,18 +60,6 @@ class Bullet(Entity):
             destroy(self)
             return
 
-        # Collision detection
-        hit_info = raycast(
-            self.position - self.direction * 0.2,
-            self.direction,
-            distance=0.4,
-            ignore=[self, self.owner],
-        )
-
-        if hit_info.hit:
-            self.on_collision(hit_info.entity)
-            destroy(self)
-
     def on_collision(self, hit_entity):
         """Called when bullet hits something."""
         # Check if hit a target
@@ -65,6 +69,11 @@ class Bullet(Entity):
         # Check if hit a player (for enemy bullets)
         if hasattr(hit_entity, "take_damage") and hit_entity != self.owner:
             hit_entity.take_damage(10)
+
+        # Check if hit an enemy (for player bullets)
+        if hasattr(hit_entity, "health") and hasattr(hit_entity, "game_manager"):
+            if self.owner != hit_entity:  # Don't hit self
+                hit_entity.take_damage(25)
 
         # Visual effect on hit (optional)
         # You can add particle effects here

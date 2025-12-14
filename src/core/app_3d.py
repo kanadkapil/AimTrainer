@@ -5,6 +5,7 @@ import time
 from src.core.settings import *
 from src.gameplay.player import FPSPlayer
 from src.gameplay.health_player import HealthPlayer
+from src.gameplay.enemy import Enemy
 from src.gameplay.environment import Arena
 from src.gameplay.targets_3d import Target3D, MovingTarget3D
 
@@ -17,6 +18,9 @@ class GameManager(Entity):
         self.score = 0
         self.last_spawn = 0
         self.spawn_rate = 1.0
+        self.enemies = []  # Track spawned enemies
+        self.enemy_spawn_interval = 5.0  # Spawn enemy every 5 seconds (Survival only)
+        self.last_enemy_spawn = 0
 
         # UI
         self.menu_text = Text(
@@ -70,6 +74,12 @@ class GameManager(Entity):
                 self.spawn_target()
                 self.last_spawn = time.time()
 
+            # Enemy spawning (Survival mode only)
+            if self.game_mode == "survival":
+                if time.time() - self.last_enemy_spawn > self.enemy_spawn_interval:
+                    self.spawn_enemy()
+                    self.last_enemy_spawn = time.time()
+
             mode_name = "Practice" if self.game_mode == "practice" else "Survival"
             self.score_text.text = f"Mode: {mode_name} | Score: {self.score}"
 
@@ -92,6 +102,23 @@ class GameManager(Entity):
 
     def on_target_hit(self, target):
         self.score += 1
+
+    def spawn_enemy(self):
+        """Spawn an enemy turret at a random position."""
+        # Spawn away from player
+        x = random.choice([-15, -10, 10, 15])
+        z = random.choice([5, 10, 15])
+
+        enemy = Enemy(position=(x, 1, z))
+        enemy.player_ref = self.player
+        enemy.game_manager = self
+        self.enemies.append(enemy)
+
+    def on_enemy_killed(self, enemy):
+        """Called when an enemy is destroyed."""
+        if enemy in self.enemies:
+            self.enemies.remove(enemy)
+        self.score += 5  # Bonus points for killing enemies
 
     def shoot(self):
         if self.gun and not self.gun.on_cooldown:
